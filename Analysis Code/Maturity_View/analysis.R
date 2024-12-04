@@ -1,5 +1,5 @@
 nodes <- read.csv("top_100000_nodes.csv", row.names = "numeric_id")
-edges <- read.csv("top_100000_edges.csv")
+edges <- read.csv("top_300000_edges.csv")
 set.seed(1)
 sampled_nodes <- sample(rownames(nodes), 100000, replace = FALSE)
 filtered_edges_df <- edges %>% filter(edges$numeric_id_1 %in% sampled_nodes & edges$numeric_id_2 %in% sampled_nodes)
