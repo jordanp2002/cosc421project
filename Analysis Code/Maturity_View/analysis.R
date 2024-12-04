@@ -1,70 +1,148 @@
-# Load necessary libraries
-library(tidyverse)
-library(igraph)
+nodes <- read.csv("top_100000_nodes.csv", row.names = "numeric_id")
+edges <- read.csv("top_100000_edges.csv")
+set.seed(1)
+sampled_nodes <- sample(rownames(nodes), 100000, replace = FALSE)
+filtered_edges_df <- edges %>% filter(edges$numeric_id_1 %in% sampled_nodes & edges$numeric_id_2 %in% sampled_nodes)
+g <- graph_from_data_frame(d = filtered_edges_df, vertices = sampled_nodes, directed = FALSE)
 
-# Load the dataset
-# Assuming edges.csv contains edge data (source, target)
-# Assuming nodes.csv contains node data (e.g., view_count, explicit/maturity_rating)
-edges <- read.csv("large_twitch_edges.csv") # Replace with actual file path
-nodes <- read.csv("large_twitch_features.csv") # Replace with actual file path
-
-# Create graph from edge list
-g <- graph_from_data_frame(d = edges, vertices = nodes, directed = FALSE) #not working
 
 # Compute Centrality Measures
+# Compute the centrality measures
+degree_centrality <- degree(g, mode = "all")
+eigenvector_centrality <- eigen_centrality(g)$vector
+closeness_centrality <- closeness(g, normalized = TRUE)
+betweenness_centrality <- betweenness(g, normalized = TRUE)
+
+# Add the centrality measures to the nodes data frame
 nodes <- nodes %>%
   mutate(
-    degree_centrality = degree(g, mode = "all"),
-    eigenvector_centrality = eigen_centrality(g)$vector,
-    closeness_centrality = closeness(g, normalized = TRUE),
-    betweenness_centrality = betweenness(g, normalized = TRUE)
+    degree_centrality = ifelse(rownames(nodes) %in% sampled_nodes, degree_centrality[rownames(nodes) %in% sampled_nodes], NA),
+    eigenvector_centrality = ifelse(rownames(nodes) %in% sampled_nodes, eigenvector_centrality[rownames(nodes) %in% sampled_nodes], NA),
+    closeness_centrality = ifelse(rownames(nodes) %in% sampled_nodes, closeness_centrality[rownames(nodes) %in% sampled_nodes], NA),
+    betweenness_centrality = ifelse(rownames(nodes) %in% sampled_nodes, betweenness_centrality[rownames(nodes) %in% sampled_nodes], NA)
   )
 
-# Merge Centrality Metrics with Node Attributes
-data <- nodes %>%
+  filtered_nodes <- nodes %>%
+  filter(
+    degree_centrality != 0 &
+      eigenvector_centrality != 0 &
+      closeness_centrality != 0 &
+      betweenness_centrality != 0
+  )
+
+# Merge centrality metrics with node attributes (e.g., views, maturity)
+data <- filtered_nodes %>%
   mutate(
-    maturity_rating = as.factor(mature), # Assuming maturity_rating column is binary
-    degree_centrality = as.numeric(degree_centrality), 
+    maturity_rating = as.factor(mature),  # Assuming 'mature' column is binary
+    degree_centrality = as.numeric(degree_centrality),
     eigenvector_centrality = as.numeric(eigenvector_centrality),
     closeness_centrality = as.numeric(closeness_centrality)
   ) %>%
-  filter(!is.na(view_count) & !is.na(maturity_rating)) # Remove missing values
+  filter(!is.na(views) & !is.na(mature))  # Remove missing values
 
 # Exploratory Data Analysis
 # Summary statistics and basic distributions
 summary(data)
-summary(data$view_count)
+summary(data$views)
 table(data$maturity_rating)
 
 # Hypothesis Testing
 # T-test for view counts by maturity rating
-t_test_result <- t.test(view_count ~ maturity_rating, data = data)
+t_test_result <- t.test(views ~ mature, data = data)
 print(t_test_result)
 
 # Regression Analysis 1: Basic model
 # Control for follower count and eigenvector centrality
-basic_model <- lm(view_count ~ maturity_rating + follower_count + eigenvector_centrality, data = data)
+# Basic regression model without follower_count
+basic_model <- lm(views ~ mature + degree_centrality + eigenvector_centrality + closeness_centrality + betweenness_centrality, data = data)
+
+# Display the model summary
 summary(basic_model)
+
 
 # Regression Analysis 2: Interaction model with centrality measures
 interaction_model <- lm(
-  view_count ~ maturity_rating * (degree_centrality + eigenvector_centrality + closeness_centrality + betweenness_centrality), 
+  views ~ mature * (degree_centrality + eigenvector_centrality + closeness_centrality + betweenness_centrality), 
   data = data
 )
 summary(interaction_model)
 
-# Visualize the results: Boxplot for maturity rating and view count
-ggplot(data, aes(x = maturity_rating, y = view_count)) +
-  geom_boxplot() +
+# Enhanced Violin Plot for View Count by Maturity Rating
+ggplot(data, aes(x = factor(mature), y = log1p(views), fill = factor(mature))) +
+  geom_violin(trim = FALSE, color = "black", alpha = 0.6) +  # Violin plot with black borders and some transparency
+  scale_fill_manual(values = c("#F0A1A1", "#8AC1D4")) +  # Custom fill colors for each maturity rating
+  scale_y_continuous(
+    limits = c(0, 10),  # Limit the y-axis for better visibility
+    breaks = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10),  # Set custom breaks for y-axis
+    labels = scales::comma_format()  # Format y-axis labels
+  ) +
   labs(
-    title = "View Count by Maturity Rating", 
+    title = "Log-transformed View Count Distribution by Maturity Rating", 
     x = "Maturity Rating", 
+    y = "Log-transformed View Count"
+  ) +
+  theme_minimal(base_size = 15) +  # Minimal theme with increased font size
+  theme(
+    axis.text = element_text(size = 12, color = "black"),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    legend.position = "none",  # Remove legend since it's binary
+    panel.grid.major = element_line(color = "grey90"),  # Light grid lines
+    panel.grid.minor = element_blank()  # No minor grid lines
+  )
+
+# Scatter plot of degree centrality vs views
+ggplot(data, aes(x = degree_centrality, y = views)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "Degree Centrality vs View Count",
+    x = "Degree Centrality",
     y = "View Count"
   ) +
   theme_minimal()
 
+# Scatter plot of eigenvector centrality vs views
+ggplot(data, aes(x = eigenvector_centrality, y = views)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(
+    title = "Eigenvector Centrality vs View Count",
+    x = "Eigenvector Centrality",
+    y = "View Count"
+  ) +
+  theme_minimal()
+
+# Scatter plot of closeness centrality vs views
+ggplot(data, aes(x = closeness_centrality, y = views)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "green") +
+  labs(
+    title = "Closeness Centrality vs View Count",
+    x = "Closeness Centrality",
+    y = "View Count"
+  ) +
+  theme_minimal()
+
+# Scatter plot of betweenness centrality vs views
+ggplot(data, aes(x = betweenness_centrality, y = views)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "purple") +
+  labs(
+    title = "Betweenness Centrality vs View Count",
+    x = "Betweenness Centrality",
+    y = "View Count"
+  ) +
+  theme_minimal()
+
+# Regression model diagnostic plots for basic_model
+par(mfrow = c(2, 2))  # 2x2 grid for plots
+plot(basic_model)
+
+
+
 # Visualize Interaction Effects: Degree Centrality and Maturity Rating
-ggplot(data, aes(x = degree_centrality, y = view_count, color = maturity_rating)) +
+ggplot(data, aes(x = degree_centrality, y = views, color = mature)) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "lm", se = FALSE) +
   labs(
