@@ -1,7 +1,10 @@
-nodes <- read.csv("top_100000_nodes.csv", row.names = "numeric_id")
-edges <- read.csv("top_300000_edges.csv")
+library(ggplot2)
+library(igraph)
+library(dplyr)
+nodes <- read.csv("large_twitch_features.csv")
+edges <- read.csv("large_twitch_edges.csv")
 set.seed(1)
-sampled_nodes <- sample(rownames(nodes), 100000, replace = FALSE)
+sampled_nodes <- sample(nodes$numeric_id, 100000, replace = FALSE)
 filtered_edges_df <- edges %>% filter(edges$numeric_id_1 %in% sampled_nodes & edges$numeric_id_2 %in% sampled_nodes)
 g <- graph_from_data_frame(d = filtered_edges_df, vertices = sampled_nodes, directed = FALSE)
 
@@ -90,69 +93,58 @@ ggplot(data, aes(x = factor(mature), y = log1p(views), fill = factor(mature))) +
     panel.grid.major = element_line(color = "grey90"),  # Light grid lines
     panel.grid.minor = element_blank()  # No minor grid lines
   )
-
-# Scatter plot of degree centrality vs views
-ggplot(data, aes(x = degree_centrality, y = views)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "blue") +
-  labs(
-    title = "Degree Centrality vs View Count",
-    x = "Degree Centrality",
-    y = "View Count"
-  ) +
-  theme_minimal()
-
-# Scatter plot of eigenvector centrality vs views
-ggplot(data, aes(x = eigenvector_centrality, y = views)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "red") +
-  labs(
-    title = "Eigenvector Centrality vs View Count",
-    x = "Eigenvector Centrality",
-    y = "View Count"
-  ) +
-  theme_minimal()
-
-# Scatter plot of closeness centrality vs views
-ggplot(data, aes(x = closeness_centrality, y = views)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "green") +
-  labs(
-    title = "Closeness Centrality vs View Count",
-    x = "Closeness Centrality",
-    y = "View Count"
-  ) +
-  theme_minimal()
-
-# Scatter plot of betweenness centrality vs views
-ggplot(data, aes(x = betweenness_centrality, y = views)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE, color = "purple") +
-  labs(
-    title = "Betweenness Centrality vs View Count",
-    x = "Betweenness Centrality",
-    y = "View Count"
-  ) +
-  theme_minimal()
-
-# Regression model diagnostic plots for basic_model
-par(mfrow = c(2, 2))  # 2x2 grid for plots
-plot(basic_model)
-
-
-
-# Visualize Interaction Effects: Degree Centrality and Maturity Rating
-ggplot(data, aes(x = degree_centrality, y = views, color = mature)) +
-  geom_point(alpha = 0.6) +
-  geom_smooth(method = "lm", se = FALSE) +
-  labs(
-    title = "View Count vs Degree Centrality by Maturity Rating",
-    x = "Degree Centrality",
-    y = "View Count",
-    color = "Maturity Rating"
-  ) +
-  theme_minimal()
-
 # Additional Model Diagnostics
-par(mfrow = c(2, 2)) # Plot grid
-plot(interaction_model)
+# Sort the data by views in descending order
+sorted_data <- data %>%
+  arrange(desc(views))
+
+# View the top entries (e.g., top 10 highest view counts)
+head(sorted_data, 10)
+
+# Filter to show the entries with the highest view counts
+top_viewers <- data %>%
+  arrange(desc(views)) %>%
+  head(10)  # Adjust the number as needed to see more or fewer top viewers
+
+# View the result
+top_viewers
+
+# Summarize the top 10 highest view counts by maturity status
+top_viewers_summary <- data %>%
+  arrange(desc(views)) %>%
+  head(10) %>%
+  group_by(maturity_rating) %>%
+  summarise(
+    max_view_count = max(views),
+    count = n()
+  )
+
+# View the result
+top_viewers_summary
+
+
+# View the top entries (e.g., top 10 highest view counts)
+head(sorted_data, 50)
+
+# Filter to show the entries with the highest view counts
+top_viewers <- data %>%
+  arrange(desc(views)) %>%
+  head(50)  # Adjust the number as needed to see more or fewer top viewers
+
+# View the result
+top_viewers
+
+# Summarize the top 10 highest view counts by maturity status
+top_viewers_summary <- data %>%
+  arrange(desc(views)) %>%
+  head(50) %>%
+  group_by(maturity_rating) %>%
+  summarise(
+    max_view_count = max(views),
+    count = n()
+  )
+
+# View the result
+top_viewers_summary
+
+
